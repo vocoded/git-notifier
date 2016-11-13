@@ -144,7 +144,9 @@ class Repository:
         self.path = os.path.abspath(self.path)
 
     def url(self, auth):
-        if self.rset.token and auth:
+        if self.rset.ssh:
+            return "ssh://git@github.com/%s/%s" % (self.org, self.name)
+        elif self.rset.token and auth:
             return "https://%s:x-oauth-basic@github.com/%s/%s" % (self.rset.token, self.org, self.name)
         else:
             return "https://github.com/%s/%s" % (self.org, self.name)
@@ -173,6 +175,7 @@ class RepositorySet:
         self.name = section
         self.user = getOption(section, "user", None)
         self.token = getOption(section, "token", None)
+        self.ssh = getOption(section, "ssh", False)
 
         self.notifier_options = {}
 
