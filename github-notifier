@@ -144,7 +144,7 @@ class Repository:
         self.path = os.path.abspath(self.path)
 
     def url(self, auth):
-        if self.rset.ssh:
+        if self.rset.ssh and auth:
             return "ssh://git@github.com/%s/%s" % (self.org, self.name)
         elif self.rset.token and auth:
             return "https://%s:x-oauth-basic@github.com/%s/%s" % (self.rset.token, self.org, self.name)
