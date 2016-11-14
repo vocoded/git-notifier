@@ -9,6 +9,7 @@ import smtplib
 import socket
 import subprocess
 import sys
+import string
 import tempfile
 import time
 import email
@@ -16,6 +17,8 @@ import email.charset
 import email.header
 import email.message
 import email.utils
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import warnings
 
 with warnings.catch_warnings():
@@ -93,6 +96,7 @@ Options = [
     ("mailserverpassword", True, None, "Password for SMTP server. If None, no authentication is used"),
     ("mailserverfrom", True, None, "Explicit MAIL_FROM for SMTP server. If None, same as sender in email header"),
     ("config", True, ConfigPath, "Path to configuration file"),
+    ("highlight", False, False, "apply syntax highlighting to diffs"),
     ]
 
 class State:
@@ -439,6 +443,8 @@ def getRepo():
 
 def startMailBody():
     (out, fname) = makeTmp()
+    if Config.highlight:
+        print >>out, "<pre style='font-size:12px'>"
     print >>out, mailTag("Repository", getRepo())
     return (out, fname)
 
@@ -475,6 +481,9 @@ def generateMail(subject, body, rev=None):
         sender = committer
 
     msg = email.message.Message()
+    if Config.highlight:
+        msg = MIMEMultipart('alternative');
+
     msg['From'] = encodeAddressList(sender)
     msg['To'] = encodeAddressList(Config.mailinglist)
     msg['Subject'] = encodeHeader('%s %s' % (emailprefix, subject))
@@ -488,8 +497,14 @@ def generateMail(subject, body, rev=None):
 
     msg['X-Git-Repository'] = encodeHeader(repo)
     msg['X-Mailer'] = encodeHeader('%s %s' % (Name, VERSION))
-    msg.set_payload(body)
-    msg.set_charset('utf-8')
+
+    if Config.highlight:
+        body = "<html><head><style>.highlight pre { font-size: 12px; }\n" + HtmlFormatter().get_style_defs('.highlight') + "</style><body>" + body
+        mime = MIMEText(body, 'html')
+        msg.attach(mime)
+    else:
+        msg.set_payload(body)
+        msg.set_charset('utf-8')
 
     return msg.as_string()
 
@@ -647,8 +662,17 @@ def sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd):
     print >>out, Separator
 
     if tname:
-        for line in open(tname):
-            print >>out, line,
+        if Config.highlight:
+            f = open(tname)
+            lines = f.readlines()
+            code = string.join(lines, "\n")
+            lexer = guess_lexer(code)
+            formatter = HtmlFormatter()
+            print >>out, "</pre>"
+            print >>out, highlight(code, lexer, formatter)
+        else:
+            for line in open(tname):
+                print >>out, line,
 
     print >>out, footer
 
@@ -782,6 +806,11 @@ else:
     report = False
 
 current = None
+
+if Config.highlight:
+    from pygments import highlight
+    from pygments.lexers import guess_lexer
+    from pygments.formatters import HtmlFormatter
 
 if Config.diff:
     # Manual diff mode. The argument must be of the form "[old-rev..]new-rev".
