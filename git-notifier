@@ -20,6 +20,7 @@ import email.utils
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import warnings
+import re
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -663,10 +664,23 @@ def sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd):
 
     if tname:
         if Config.highlight:
+            lines = []
+            lexer = None
             f = open(tname)
-            lines = f.readlines()
+            for ln in f.readlines():
+                lines.append(ln)
+                match = re.match("diff --git a.*(\/(\w+\.\w+) b\/)", ln)
+                if match and not lexer:
+                    try:
+                        lexer = get_lexer_for_filename(match.group(2))
+                    except ClassNotFound:
+                        print >>sys.stderr, "No lexer for file %s" % match.group(2)
             code = string.join(lines, "\n")
-            lexer = guess_lexer(code)
+            if lexer is None:
+                lexer = guess_lexer(code)
+            if lexer.__class__.__name__ == "PhpLexer":
+                code = "<?php\n" + code
+            print >>sys.stderr, "Selected lexer of type %s" % lexer.__class__.__name__
             formatter = HtmlFormatter()
             print >>out, "</pre>"
             print >>out, highlight(code, lexer, formatter)
@@ -809,8 +823,9 @@ current = None
 
 if Config.highlight:
     from pygments import highlight
-    from pygments.lexers import guess_lexer
+    from pygments.lexers import guess_lexer,get_lexer_for_filename
     from pygments.formatters import HtmlFormatter
+    from pygments.util import ClassNotFound
 
 if Config.diff:
     # Manual diff mode. The argument must be of the form "[old-rev..]new-rev".
