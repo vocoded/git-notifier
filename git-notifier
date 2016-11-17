@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 
 import getpass
 import optparse
@@ -593,6 +593,30 @@ def entryDeleted(key, value):
 
     sendMail("%s '%s' deleted" % (key, value), out, fname)
 
+def findLexer(lines):
+    lexer = None
+    lexers = {}
+    for ln in lines:
+        match = re.match("diff --git a.*(\/([\w_.-]+\.\w+) b\/)", ln)
+        if match:
+            try:
+                lex = get_lexer_for_filename(match.group(2))
+                name = lex.__class__.__name__
+                if not name in lexers:
+                    lexers[name] = [1, lex]
+                else:
+                    lexers[name][0] += 1
+            except ClassNotFound:
+                print >>sys.stderr, "No lexer for file %s" % match.group(2)
+
+    top = 0
+    for key, value in lexers.iteritems():
+        if value[0] > top:
+            top = value[0]
+            lexer = value[1]
+
+    return lexer
+
 # Sends a mail for a notification consistent of two parts: (1) the output of a
 # show command, and (2) the output of a diff command.
 def sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd):
@@ -631,6 +655,7 @@ def sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd):
 
     footer = ""
     show = git(show_cmd)
+    files_only = False
 
     for line in show:
         if NoDiff in line:
@@ -647,6 +672,7 @@ def sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd):
         size = os.path.getsize(tname)
 
         if size > Config.maxdiffsize:
+            files_only = True
             (tmp, tname) = makeTmp()
             diff = git(stat_cmd, stdout_to=tmp)
             tmp.close()
@@ -662,28 +688,33 @@ def sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd):
 
     print >>out, Separator
 
+    if not files_only:
+        for line in git(stat_cmd):
+            print >>out, line
+        print >>out, Separator
+
     if tname:
         if Config.highlight:
-            lines = []
-            lexer = None
             f = open(tname)
-            for ln in f.readlines():
-                lines.append(ln)
-                match = re.match("diff --git a.*(\/(\w+\.\w+) b\/)", ln)
-                if match and not lexer:
-                    try:
-                        lexer = get_lexer_for_filename(match.group(2))
-                    except ClassNotFound:
-                        print >>sys.stderr, "No lexer for file %s" % match.group(2)
+            lines = f.readlines()
+            lexer = findLexer(lines)
             code = string.join(lines, "\n")
+
             if lexer is None:
-                lexer = guess_lexer(code)
+                try:
+                    lexer = guess_lexer(code)
+                except ClassNotFound:
+                    lexer = None
             if lexer.__class__.__name__ == "PhpLexer":
                 code = "<?php\n" + code
             print >>sys.stderr, "Selected lexer of type %s" % lexer.__class__.__name__
             formatter = HtmlFormatter()
             print >>out, "</pre>"
-            print >>out, highlight(code, lexer, formatter)
+            try:
+                code = highlight(code, lexer, formatter)
+            except:
+                pass
+            print >>out, code.encode('utf8')
         else:
             for line in open(tname):
                 print >>out, line,
