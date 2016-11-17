@@ -83,8 +83,9 @@ Options = [
     ("repouri", True, None, "full URI for the repository"),
     ("gitbasedir", True, os.path.dirname(os.getcwd()), "base directory for all git repositories"),
     ("sender", True, sender, "sender address for mails"),
-    ("keeprealnames", True, None, "with --sender, keep real name from commit"),
+    ("keeprealnames", False, False, "with --sender, keep real name from commit"),
     ("link", True, None, "Link to insert into mail, %s will be replaced with revision"),
+    ("compare", True, None, "Compare link to insert into mail"),
     ("updateonly", False, False, "update state file only, no mails"),
     ("users", True, None, "location of a user-to-email mapping file"),
     ("replyto", True, None, "email address for reply-to header"),
@@ -653,6 +654,10 @@ def sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd):
         url = url.replace("%r", getRepoName())
         print >>out, mailTag("Link", url)
 
+    if Config.compare:
+        url = Config.compare.replace("%r", getRepoName())
+        print >>out, mailTag("Compare", url)
+
     footer = ""
     show = git(show_cmd)
     files_only = False
@@ -694,7 +699,7 @@ def sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd):
         print >>out, Separator
 
     if tname:
-        if Config.highlight:
+        if Config.highlight and not files_only:
             f = open(tname)
             lines = f.readlines()
             lexer = findLexer(lines)
@@ -718,6 +723,8 @@ def sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd):
         else:
             for line in open(tname):
                 print >>out, line,
+            if Config.highlight:
+                print >>out, "</pre>"
 
     print >>out, footer
 
