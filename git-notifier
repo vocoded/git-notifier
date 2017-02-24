@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! /usr/bin/env python
 
 import getpass
 import optparse
@@ -99,6 +99,8 @@ Options = [
     ("mailserverfrom", True, None, "Explicit MAIL_FROM for SMTP server. If None, same as sender in email header"),
     ("config", True, ConfigPath, "Path to configuration file"),
     ("highlight", False, False, "apply syntax highlighting to diffs"),
+    ("ignoreheadupdate", False, False, "suppress email on update of branch head"),
+    ("ignoremergemaster", False, False, "suppress email on merging master into a branch"),
     ]
 
 class State:
@@ -501,7 +503,10 @@ def generateMail(subject, body, rev=None):
     msg['X-Mailer'] = encodeHeader('%s %s' % (Name, VERSION))
 
     if Config.highlight:
-        body = "<html><head><style>.highlight pre { font-size: 12px; }\n" + HtmlFormatter().get_style_defs('.highlight') + "</style><body>" + body
+        styles = HtmlFormatter().get_style_defs('.highlight')
+        # Don't highlight errors
+        styles = re.sub(r"border: 1px solid #FF0000", "", styles)
+        body = "<html><head><style>.highlight pre { font-size: 12px; }\n" + styles + "</style><body>" + body
         mime = MIMEText(body, 'html')
         msg.attach(mime)
     else:
@@ -717,9 +722,13 @@ def sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd):
             print >>out, "</pre>"
             try:
                 code = highlight(code, lexer, formatter)
+                code = re.sub(r"\n{2,}", "\n", code)
             except:
                 pass
-            print >>out, code.encode('utf8')
+            try:
+                print >>out, code.decode('utf8')
+            except:
+                print >>out, "Code suppressed due to encoding failure"
         else:
             for line in open(tname):
                 print >>out, line,
@@ -772,7 +781,10 @@ def commit(current, rev, force=False, subject_head=None):
     diff_cmd = "diff-tree --root --patch-with-stat --no-color --ignore-space-at-eol --textconv %s %s" % (merge_diff, rev)
     stat_cmd = "diff-tree --root --stat --no-color --ignore-space-at-eol %s" % rev
 
-    sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd)
+    if Config.ignoremergemaster and re.search(r"Merge( remote-tracking)? branch '(master|origin/master)'", subject):
+        print >>sys.stderr, "Suppressing merge from master commit"
+    else:
+        sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd)
 
 # Sends a diff between two revisions.
 #
@@ -932,7 +944,7 @@ if report:
             # Want to see all commits for this head, even if already reported
             # in the past for some other. So we record these separately.
             reportPath(current, path, subject_head=head)
-        else:
+        elif not Config.ignoreheadupdate:
             # Just send a summary for heads that now include some new stuff.
             if len(set(path) - new_revs):
                 headMoved(head, path)
