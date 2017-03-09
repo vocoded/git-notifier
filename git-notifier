@@ -99,6 +99,7 @@ Options = [
     ("mailserverfrom", True, None, "Explicit MAIL_FROM for SMTP server. If None, same as sender in email header"),
     ("config", True, ConfigPath, "Path to configuration file"),
     ("highlight", False, False, "apply syntax highlighting to diffs"),
+    ("ignoresender", False, None, "email addresses to ignore"),
     ("ignoreheadupdate", False, False, "suppress email on update of branch head"),
     ("ignoremergemaster", False, False, "suppress email on merging master into a branch"),
     ]
@@ -781,8 +782,12 @@ def commit(current, rev, force=False, subject_head=None):
     diff_cmd = "diff-tree --root --patch-with-stat --no-color --ignore-space-at-eol --textconv %s %s" % (merge_diff, rev)
     stat_cmd = "diff-tree --root --stat --no-color --ignore-space-at-eol %s" % rev
 
+    ignore_sender = Config.ignoresender and Config.sender in re.split(",", Config.ignoresender) 
+
     if Config.ignoremergemaster and re.search(r"Merge( remote-tracking)? branch '(master|origin/master)'", subject):
         print >>sys.stderr, "Suppressing merge from master commit"
+    elif ignore_sender:
+        print >>sys.stderr, "Suppressing commit from ignored sender %s" % Config.sender
     else:
         sendChangeMail(rev, subject, heads, show_cmd, diff_cmd, stat_cmd)
 
